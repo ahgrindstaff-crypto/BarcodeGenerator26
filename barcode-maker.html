@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Barcode Maker</title>
+<style>
+  :root{
+    --bench:#E7EAE3; --panel:#FFFFFF; --ink:#1C201C; --soft:#5B635B;
+    --line:#CBD1C8; --green:#2F6E4F; --green-d:#245740; --amber:#A8691A;
+    --kraft:#C8A273;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bench);color:var(--ink);
+    font:15px/1.45 "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif}
+  header{padding:18px 22px 8px;max-width:1080px;margin:0 auto}
+  h1{margin:0;font:800 26px/1.1 "Helvetica Neue", Arial, sans-serif;letter-spacing:-.01em}
+  header p{margin:4px 0 0;color:var(--soft);max-width:62ch}
+  main{max-width:1080px;margin:0 auto;padding:10px 22px 24px;
+    display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:22px;align-items:start}
+  @media (max-width:860px){main{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  label{display:block;font-size:13px;color:var(--soft)}
+  input[type=text]{width:100%;margin-top:2px;padding:7px 9px;font:inherit;color:var(--ink);
+    border:1px solid var(--line);border-radius:6px;background:#FBFCFA}
+  #code{font:600 24px/1.2 "Courier New", monospace;letter-spacing:.12em;padding:8px 10px}
+  .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-top:12px}
+  .row .grow{flex:1;min-width:200px}
+  .check-digit{font:600 24px/1.2 "Courier New", monospace;padding:8px 12px;border-radius:6px;
+    background:#EEF4F0;border:1px dashed var(--green);color:var(--green);min-width:3ch;text-align:center}
+  .hint{font-size:13px;color:var(--soft);margin:6px 0 0}
+  .msg{margin-top:10px;padding:6px 10px;border-left:4px solid var(--amber);border-radius:4px;background:#FFF8EE;font-size:14px}
+  .msg:empty{display:none}
+  input:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid #7FB89A;outline-offset:1px}
+  button{font:inherit;font-weight:600;border-radius:6px;padding:8px 14px;cursor:pointer;
+    border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+  button.primary{background:var(--green);border-color:var(--green);color:#fff}
+  button.primary:hover{background:var(--green-d)}
+  details{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+  summary{cursor:pointer;font-weight:700}
+  #math{font-size:14px;margin-top:8px}
+  #math table{border-collapse:collapse;margin:6px 0;font-family:"Courier New", monospace}
+  #math td{border:1px solid var(--line);padding:3px 7px;text-align:center}
+  #math td.x3{background:#EEF4F0}
+  #math p{margin:6px 0}
+  .side{position:sticky;top:12px}
+  .board{background:var(--kraft);
+    background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.035) 0 2px,transparent 2px 7px);
+    border-radius:10px;padding:22px;display:flex;justify-content:center}
+  #preview svg{display:block;width:100%;max-width:320px;height:auto}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .opt{display:flex;gap:6px;align-items:center;margin-top:10px;font-size:14px;color:var(--ink)}
+  footer{max-width:1080px;margin:0 auto;padding:0 22px 22px;color:var(--soft);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Barcode Maker</h1>
+  <p>Type 11 numbers and the barcode builds itself. The 12th number is figured out for you. Download it and put it on your package design.</p>
+</header>
+
+<main>
+  <section class="card">
+    <label for="name">Product name (for the file name)</label>
+    <input id="name" type="text" maxlength="40" placeholder="Crunch Bites" autocomplete="off">
+
+    <div class="row">
+      <div class="grow">
+        <label for="code">Your 11 numbers</label>
+        <input id="code" type="text" inputmode="numeric" maxlength="12" placeholder="20000000000" autocomplete="off">
+      </div>
+      <div>
+        <label>Check digit</label>
+        <div class="check-digit" id="cd">?</div>
+      </div>
+    </div>
+    <p class="hint">Codes that start with 2 are for store use only, so they won't match a real product if someone scans yours.</p>
+    <div class="msg" id="msg"></div>
+
+    <div class="row">
+      <button type="button" id="rand">Make a random code</button>
+      <button type="button" id="clear">Clear</button>
+    </div>
+
+    <details>
+      <summary>How does the machine know the last number?</summary>
+      <div id="math"></div>
+    </details>
+  </section>
+
+  <aside class="side">
+    <div class="board"><div id="preview" aria-live="polite"></div></div>
+    <div class="actions">
+      <button type="button" class="primary" id="png">Download PNG</button>
+      <button type="button" id="svgBtn">Download SVG</button>
+    </div>
+    <label class="opt"><input type="checkbox" id="clearBg"> Transparent background (PNG)</label>
+  </aside>
+</main>
+
+<footer>Works offline. No sign-in. Nothing you type leaves this page.</footer>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const L = ['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+  const R = L.map(p => p.replace(/./g, c => c === '0' ? '1' : '0'));
+  const FONT = 'Helvetica Neue, Helvetica, Arial, sans-serif';
+  let lastSize = {w:0, h:0};
+
+  function checkDigit(d11){
+    let odd = 0, even = 0;
+    for (let i = 0; i < 11; i++) { const n = +d11[i]; if (i % 2 === 0) odd += n; else even += n; }
+    return (10 - ((odd * 3 + even) % 10)) % 10;
+  }
+
+  function digits(){ return $('code').value.replace(/\D/g, ''); }
+
+  // Returns the full 12-digit code, or null if not ready
+  function fullCode(){
+    const d = digits();
+    if (d.length < 11) return null;
+    return d.slice(0, 11) + checkDigit(d.slice(0, 11));
+  }
+
+  function buildSVG(code, transparent){
+    const X = 2.4, QZ = 11, BAR = 72, EXT = 10, TOP = 8;
+    const modules = '101' + [...code.slice(0,6)].map(c => L[+c]).join('') + '01010' +
+                    [...code.slice(6)].map(c => R[+c]).join('') + '101';
+    const long = i => i < 10 || (i >= 45 && i < 50) || i >= 85;   // guards + first/last digit bars
+    const W = (95 + QZ * 2) * X, H = TOP + BAR + EXT + 8;
+    const el = [];
+    let i = 0;
+    while (i < 95) {
+      if (modules[i] === '1') {
+        let j = i; while (j < 95 && modules[j] === '1' && long(j) === long(i)) j++;
+        el.push('<rect x="'+((QZ + i) * X).toFixed(2)+'" y="'+TOP+'" width="'+((j - i) * X).toFixed(2)+'" height="'+(long(i) ? BAR + EXT : BAR)+'"/>');
+        i = j;
+      } else i++;
+    }
+    const fs = 15, ty = TOP + BAR + EXT + 2;
+    const t = (x, s, size) => el.push('<text x="'+x.toFixed(2)+'" y="'+ty+'" font-size="'+(size || fs)+'" text-anchor="middle">'+s+'</text>');
+    t((QZ - 5) * X, code[0], 12);
+    t((QZ + 27.5) * X, code.slice(1, 6).split('').join(' '));
+    t((QZ + 67.5) * X, code.slice(6, 11).split('').join(' '));
+    t((QZ + 95 + 5) * X, code[11], 12);
+    lastSize = {w:W, h:H};
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="'+W.toFixed(2)+'" height="'+H+'" viewBox="0 0 '+W.toFixed(2)+' '+H+'" font-family="'+FONT+'" fill="#000">' +
+      (transparent ? '' : '<rect width="100%" height="100%" fill="#fff"/>') + el.join('') + '</svg>';
+  }
+
+  function placeholder(){
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 110"><rect width="280" height="110" rx="6" fill="#fff" opacity=".85"/>' +
+      '<text x="140" y="60" text-anchor="middle" font-family="'+FONT+'" font-size="14" fill="#5B635B">Type 11 numbers to see your barcode</text></svg>';
+  }
+
+  function showMath(d){
+    const box = $('math');
+    if (d.length < 11) { box.innerHTML = '<p>Type all 11 numbers and the math will show up here.</p>'; return; }
+    const ds = d.slice(0, 11).split('').map(Number);
+    let odd = 0, even = 0;
+    ds.forEach((n, i) => { if (i % 2 === 0) odd += n; else even += n; });
+    const total = odd * 3 + even, cd = (10 - total % 10) % 10;
+    box.innerHTML =
+      '<table><tr>' + ds.map((n, i) => '<td class="'+(i % 2 === 0 ? 'x3' : '')+'">'+n+'</td>').join('') + '</tr></table>' +
+      '<p>1. Add the shaded numbers (1st, 3rd, 5th...): <b>' + odd + '</b>. Multiply by 3: <b>' + (odd * 3) + '</b>.</p>' +
+      '<p>2. Add the other numbers: <b>' + even + '</b>.</p>' +
+      '<p>3. Add those together: <b>' + total + '</b>.</p>' +
+      '<p>4. What do you add to get to the next multiple of 10? <b>' + cd + '</b>. That is the check digit.</p>' +
+      '<p>A scanner does this same math every time. If its answer doesn\'t match the last number, it knows it misread the code and beeps for a rescan.</p>';
+  }
+
+  function render(){
+    const d = digits(), msg = $('msg');
+    msg.textContent = '';
+    if (d.length === 12) {
+      const want = checkDigit(d.slice(0, 11));
+      if (+d[11] !== want) msg.textContent = 'You typed 12 numbers, but the last one should be ' + want + '. The barcode uses ' + want + '.';
+    }
+    const code = fullCode();
+    $('cd').textContent = code ? code[11] : '?';
+    $('preview').innerHTML = code ? buildSVG(code, false) : placeholder();
+    $('png').disabled = $('svgBtn').disabled = !code;
+    showMath(d);
+  }
+
+  function fileName(){
+    const n = $('name').value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return (n || 'product') + '-barcode';
+  }
+  function save(blob, name){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  $('png').addEventListener('click', () => {
+    const code = fullCode(); if (!code) return;
+    const transparent = $('clearBg').checked;
+    const svg = buildSVG(code, transparent), {w, h} = lastSize, s = 5;
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = Math.round(w * s); c.height = Math.round(h * s);
+      const ctx = c.getContext('2d');
+      if (!transparent) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => save(b, fileName() + '.png'), 'image/png');
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+  $('svgBtn').addEventListener('click', () => {
+    const code = fullCode(); if (!code) return;
+    save(new Blob([buildSVG(code, $('clearBg').checked)], {type:'image/svg+xml'}), fileName() + '.svg');
+  });
+
+  $('rand').addEventListener('click', () => {
+    let s = '2';
+    for (let i = 0; i < 10; i++) s += Math.floor(Math.random() * 10);
+    $('code').value = s; render();
+  });
+  $('clear').addEventListener('click', () => { $('code').value = ''; render(); });
+
+  $('code').addEventListener('input', () => {
+    const cleaned = $('code').value.replace(/\D/g, '').slice(0, 12);
+    if (cleaned !== $('code').value) $('code').value = cleaned;
+    render();
+  });
+  render();
+})();
+</script>
+</body>
+</html>
